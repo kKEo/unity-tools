@@ -1,0 +1,69 @@
+#!/usr/bin/python
+
+import appindicator
+import pynotify
+import gtk
+import time
+from threading import Thread, Event
+import subprocess
+import sys
+import logging
+
+gtk.gdk.threads_init()
+
+class CpuTempMonitor(Thread):
+	def __init__(self, parent):
+		Thread.__init__(self)
+		self.parent = parent
+		self.interval = 3
+	
+	def _getTemp(self):
+		temp = subprocess.Popen("sensors | grep ^CPU | cut -f2 -d+", stdout=subprocess.PIPE, shell=True).communicate()[0].strip()
+		return temp
+
+	def run(self):
+		while(self.parent.alive.isSet()):
+			self.parent.update(self._getTemp())
+			time.sleep(self.interval)
+
+class CpuTempIndicator:
+	def __init__(self):
+		self.ai = appindicator.Indicator('indicator-cputemp', '', appindicator.CATEGORY_APPLICATION_STATUS)
+		self.ai.set_status( appindicator.STATUS_ACTIVE )
+		self.ai.set_label("Test")
+		self.m = gtk.Menu()
+		self.qi = gtk.MenuItem( 'Quit' )
+
+		self.m.append(self.qi)
+		self.ai.set_menu(self.m)
+		self.qi.show()
+
+		self.qi.connect('activate', self.quit)
+
+		self.alive = Event()
+		self.alive.set()
+
+		self.fetch = CpuTempMonitor(self)
+		self.fetch.start()
+
+
+	def update(self, data):
+		label = data#"{data}".format(temp=data['t'])
+		self.ai.set_label(label)
+
+	def quit(self, event=None):
+		self.alive.clear()
+		try:
+        		gtk.main_quit()
+		except RuntimeError: pass
+
+def main(args):
+	ind = CpuTempIndicator()
+	try:
+		gtk.main()
+	except KeyboardInterrupt:
+		ind.quit()
+
+if __name__ == "__main__":
+	main(sys.argv)
+
